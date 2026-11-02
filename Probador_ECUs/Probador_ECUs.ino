@@ -131,7 +131,7 @@ void autodetectarPinesTouch() {
 }
 
 // ======================================================================================
-// ESTRUCTURA DE CALIBRACIÓN TÁCTIL EN EEPROM
+// CALIBRACIÓN TÁCTIL FIJA PARA TU PANTALLA 3.5" (SIN DESCALIBRACIÓN ACCIDENTAL)
 // ======================================================================================
 struct TouchCalib {
   uint16_t magic;
@@ -139,7 +139,8 @@ struct TouchCalib {
   uint8_t  swapXY;
 };
 
-TouchCalib tCal = { 0xEC58, 150, 920, 150, 940, 1 };
+// Valores exactos de tu pantalla 3.5" en modo Horizontal (480x320)
+TouchCalib tCal = { 0xEC60, 150, 920, 150, 940, 1 };
 
 MCUFRIEND_kbv tft;
 uint16_t g_lcdID = 0;
@@ -381,7 +382,7 @@ void ejecutarCalibracionTouch() {
   tCal.xRight = ax2 + dx;
   tCal.yTop   = ay1 - dy;
   tCal.yBot   = ay2 + dy;
-  tCal.magic  = 0xEC58;
+  tCal.magic  = 0xEC60;
 
   EEPROM.put(0, tCal);
   dibujarInterfazCompleta();
@@ -714,7 +715,10 @@ void dibujarInterfazCompleta() {
   tft.setTextSize(2);
   tft.setCursor(12, 8);
   tft.print(F("BANCO PROBADOR DE ECUs"));
-  dibujarBoton(350, 4, 90, 24, C_BLUE_BTN, C_VOLT, "CAL TOUCH", 1, C_VOLT);
+  tft.setTextSize(1);
+  tft.setTextColor(C_VOLT);
+  tft.setCursor(320, 12);
+  tft.print(F("FUENTE + CKP/CMP"));
 
   tft.fillRoundRect(10, 40, 220, 270, 8, C_PANEL);
   tft.drawRoundRect(10, 40, 220, 270, 8, C_BORDER);
@@ -766,11 +770,6 @@ void procesarTouch() {
   int16_t ty = map(rawY, tCal.yTop,  tCal.yBot,   0, H);
   tx = constrain(tx, 0, W - 1);
   ty = constrain(ty, 0, H - 1);
-
-  if (tx >= 345 && tx <= 445 && ty <= 36) {
-    ejecutarCalibracionTouch();
-    return;
-  }
 
   // Botón para cambiar el límite de corriente (LIM: X.XA en x: 130..225, y: 118..165)
   // Escalones para fuente con LM2596 (máx 5.0A): 0.5A -> 1.0A -> 2.0A -> 3.0A -> 3.5A -> 5.0A
@@ -877,9 +876,8 @@ void setup() {
   W = tft.width();
   H = tft.height();
 
-  TouchCalib eepCal;
-  EEPROM.get(0, eepCal);
-  if (eepCal.magic == 0xEC58) tCal = eepCal;
+  // Usamos siempre la calibración fija comprobada de tu pantalla (150, 920, 150, 940, swap=1)
+  // ignorando cualquier calibración errónea previa en EEPROM.
 
   // Cargar la tara del ACS712 guardada en EEPROM (si ya se calibró con TARA 0.0A); si no, calibrar al inicio
   uint16_t magicTara = 0;
