@@ -140,7 +140,7 @@ struct TouchCalib {
 };
 
 // Valores exactos de tu pantalla 3.5" en modo Horizontal (480x320)
-TouchCalib tCal = { 0xEC61, 920, 150, 150, 940, 1 };
+TouchCalib tCal = { 0xEC62, 920, 150, 255, 980, 1 };
 
 MCUFRIEND_kbv tft;
 uint16_t g_lcdID = 0;
