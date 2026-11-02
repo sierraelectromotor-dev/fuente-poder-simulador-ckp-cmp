@@ -413,9 +413,25 @@ void leerSensores() {
     }
   }
 
-  // Filtro digital amortiguado (7/8 anterior + 1/8 nueva lectura) para lectura firme sin oscilación
-  ampCenti = (uint16_t)(((uint32_t)ampCenti * 7UL + iMed) >> 3);
-  if (ampCenti > ampPeakCenti) ampPeakCenti = ampCenti;
+  // 1. PROTECCIÓN INSTANTÁNEA DE FUSIBLE ELECTRÓNICO (evalúa la lectura inmediata iMed sin retardo de filtro)
+  if (iMed >= ampLimitCenti && ecuPowerOn) {
+    digitalWrite(PIN_ECU_PWR, LOW); // Corta el relé en el acto (< 15 ms)
+    ecuPowerOn      = false;
+    overCurrentTrip = true;
+    ampCenti        = iMed;
+    ampTripCenti    = iMed;         // Congelar el valor exacto al que se disparó la protección
+    if (iMed > ampPeakCenti) ampPeakCenti = iMed;
+  } else {
+    // 2. Filtro Adaptativo Inteligente:
+    // - Si hay un cambio brusco de corriente (>= 0.08A, ej. al conectar/desconectar carga), salta de inmediato a iMed.
+    // - Si la corriente está fija (variación < 0.08A), aplica filtro suave (3/4 + 1/4) con redondeo para no oscilar.
+    if (abs((int16_t)iMed - (int16_t)ampCenti) >= 8) {
+      ampCenti = iMed;
+    } else {
+      ampCenti = (uint16_t)(((uint32_t)ampCenti * 3UL + iMed + 2UL) >> 2);
+    }
+    if (ampCenti > ampPeakCenti) ampPeakCenti = ampCenti;
+  }
 
   if (usarAdcVoltaje) {
     pinMode(PIN_VOLTAJE, INPUT);
@@ -425,7 +441,12 @@ void leerSensores() {
     // Con suma de 16 muestras (máx = 1023 * 16 = 16368) -> precisión de centésimas sin pérdida por truncamiento
     uint16_t vMed = (uint16_t)(((uint32_t)sumaV * ESCALA_DIVISOR_CV) / 16368UL);
     if (vMed < 15) vMed = 0; // Zona muerta inferior < 0.15V
-    voltCenti = (uint16_t)(((uint32_t)voltCenti * 3UL + vMed) >> 2);
+    // Filtro adaptativo también en Voltaje para respuesta rápida al mover el potenciómetro
+    if (abs((int16_t)vMed - (int16_t)voltCenti) >= 15) {
+      voltCenti = vMed;
+    } else {
+      voltCenti = (uint16_t)(((uint32_t)voltCenti * 3UL + vMed + 2UL) >> 2);
+    }
   } else {
     #if !defined(__AVR_ATmega2560__)
       pinMode(A4, OUTPUT);
@@ -438,10 +459,10 @@ void leerSensores() {
   wattDeci = (uint16_t)(((uint32_t)voltCenti * (uint32_t)ampCenti) / 1000UL);
 
   if (ampCenti >= ampLimitCenti && ecuPowerOn) {
+    digitalWrite(PIN_ECU_PWR, LOW);
     ecuPowerOn      = false;
     overCurrentTrip = true;
-    ampTripCenti    = ampCenti; // Congelar el valor exacto al que se disparó la protección
-    digitalWrite(PIN_ECU_PWR, LOW);
+    ampTripCenti    = ampCenti;
   }
 }
 
@@ -878,7 +899,7 @@ void loop() {
   procesarTouch();
 
   unsigned long ahora = millis();
-  if (ahora - lastSensorMillis >= 120) {
+  if (ahora - lastSensorMillis >= 35) {
     lastSensorMillis = ahora;
     leerSensores();
     actualizarMedidoresUI(false);
